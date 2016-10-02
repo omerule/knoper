@@ -1,2 +1,2 @@
 # knoper
-LDAP and NTFS ACE and ~ > Neo4j
+LDAP, NTFS ACE and ~ > Neo4j
