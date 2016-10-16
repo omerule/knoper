@@ -13,10 +13,27 @@
 #the outputfile also contains the Neo4j relationtype:
 #        (user)-[read,write..]->(dir/file)
 #
-#[dir] [read, user1,user2...] [write, user2,user3] [denied, user5...]
+#[dir]\t [read, user1,user2...]\t [write, user2,user3]\t [denied, user5...]
 #to 
 #[dir] [read]  [user1]
 #[dir] [read]  [user1]
 #[dir] [write] [user2]
-#and a list containing only unique directory ($1) in the file 
-~                                                               
+#and a list containing only unique directory ($1) in the file
+#a list of all unique users 
+BEGIN{
+        FS="\t";
+}
+{
+#$1 is the direcoty, $2 read user/groups, etc..
+        n = split($2, t, ",")
+        for (i = 0; ++i <= n;)
+                print i, $1, "read", t[i]
+        n = split($3, t, ",")
+        for (i = 0; ++i <= n;)
+                print i, $1, "write", t[i]
+        n = split($4, t, ",")
+        for (i = 0; ++i <= n;)
+                print i, $1, "deny", t[i]
+}
+END {}
+
