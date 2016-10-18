@@ -18,3 +18,13 @@ LOAD CSV WITH HEADERS FROM "file:///groep2members.csv" AS cknoop FIELDTERMINATOR
 //voeg een extra tag toe aan de groepen: applicaties, lokaal
 MATCH (ag:groep) WHERE ag.dn CONTAINS 'OU=Application,OU=Groups,OU=NZA,DC=nza,DC=local' SET ag:applicatie;
 MATCH (lg:groep) WHERE lg.dn CONTAINS 'OU=Local,OU=Resource,OU=Groups,OU=NZA,DC=nza,DC=local' SET lg:lokaal;
+//de directory
+MATCH (x) DETACH DELETE x;
+CREATE CONSTRAINT ON (d:dir) ASSERT d.locatie IS UNIQUE;
+CREATE CONSTRAINT ON (p:persoon) ASSERT p.user IS UNIQUE;
+LOAD CSV WITH HEADERS FROM 'file:///klaar.txt' AS lijn FIELDTERMINATOR ';'
+MERGE (x:persoon{user:TRIM(lijn.user)})
+MERGE (y:dir{locatie:TRIM(lijn.dir)})
+CREATE (x) - [r:rechten{soort:lijn.rechten}] -> (y)
+;
+
