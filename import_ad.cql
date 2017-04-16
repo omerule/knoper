@@ -31,8 +31,6 @@ LOAD CSV WITH HEADERS FROM "file:///groep2members.csv" AS pknoop FIELDTERMINATOR
 USING PERIODIC COMMIT
 LOAD CSV WITH HEADERS FROM "file:///groep2members.csv" AS cknoop FIELDTERMINATOR ';' MATCH (gc:groep{guid:cknoop.GUID}),(c:computer{guid:cknoop.GUID_member}) MERGE (c)-[l:lid_van]->(gc);
 //voeg een extra tag toe aan de groepen: applicaties, lokaal
-MATCH (ag:groep) WHERE ag.dn CONTAINS 'OU=Application,OU=Groups,OU=NZA,DC=nza,DC=local' SET ag:applicatie;
-MATCH (lg:groep) WHERE lg.dn CONTAINS 'OU=Local,OU=Resource,OU=Groups,OU=NZA,DC=nza,DC=local' SET lg:lokaal;
 //de directory
 CREATE CONSTRAINT ON (d:dir) ASSERT d.locatie IS UNIQUE;
 CREATE CONSTRAINT ON (p:persoon) ASSERT p.user IS UNIQUE;
