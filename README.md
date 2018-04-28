@@ -6,5 +6,5 @@ You need a ActiveDirectory you kan read with your Domain credentials and a runni
 
 # (ActiveDirectory)-[:Python]->(Neo4j) 
 
-# Version: "First Make it work #1"######
+# Version: nr1 "First Make it work 1"
 
