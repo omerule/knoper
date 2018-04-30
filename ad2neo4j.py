@@ -12,8 +12,8 @@
 #And put the objects in Neo4j as "nodes" and make a relations with AD groups and there members
 #The flow of the program is get all group, computer and person objects from Active Directory 
 #and make groupnodes in Neo4j.
-#Then get merge all memberOf and primaryGroupID with Neo4j
-#(object)-[:memberOf]->(group) and (user/computer)-[:memberOf{based on primaryGroupID]->(groep)
+#Then get merge all relations between memberOf and primaryGroupID with Neo4j
+#(object)-[:memberOf]->(group) and (user/computer)-[:memberOf{based on primaryGroupID]->(group)
 #You need python-ldap3 and Neo4j https://neo4j.com/docs/operations-manual/3.1/installation/
 
 #This one is needed for some issue with Neo4j and Python and "datetime" values.
@@ -88,12 +88,9 @@ person_attributes = list(set(mandatory_person_attr + [
 ]))
 #Search for Persons and get the attributes needed
 conn.search("{DC=domain,DC=local}","(&(objectCategory=person)(objectClass=user))", attributes=person_attributes)
-#conn.entries[3].uSNCreated
 #Make the Nodes in Neo4j
 print(str(len(conn.entries)) + " persons_entries")
 for x in conn.entries:          
-#    print ("%s  %s  %s" % (x.distinguishedName.value, x.member, x.primaryGroupID))
-#    print(welder(person_attributes,"person"))
     #Create a dict with the AD attributes as "keys" and there value extracted from AD.
     neo_advalues_dict = {}    
     for y in person_attributes:
@@ -104,12 +101,9 @@ for x in conn.entries:
         else:
             neo_advalues_dict[y] = x[y].value
     neo_advalues_dict["extra_info"] = "hello world!"
-    
-    #for z in neo_advalues_dict.keys():
-    #    print z + str(type(neo_advalues_dict[z]))
-    
-    #print(welder(neo_advalues_dict.keys(), "person"), neo_advalues_dict)
+    #Create the Node(s) with cypherquerys 
     session.run(welder(neo_advalues_dict.keys(), "person"), neo_advalues_dict)
+
 print("persons are made...")
 #################################################################
 
@@ -201,6 +195,7 @@ session.run("CREATE CONSTRAINT ON (p:person) ASSERT p.distinguishedName IS UNIQU
 session.run("CREATE CONSTRAINT ON (c:computer) ASSERT c.distinguishedName IS UNIQUE;")
 session.run("CREATE CONSTRAINT ON (g:group) ASSERT g.distinguishedName IS UNIQUE;")
 session.run("CREATE INDEX ON :group(primaryGroupToken);")
+#I'am not sure if this will "pause"  the rest of the cypher querys
 session.run("CALL db.awaitIndexes(600);")
 #Maybe more indexes etc..
 #Now make the relations with members of group
