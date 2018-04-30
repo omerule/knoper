@@ -4,7 +4,7 @@
 #                                      #
 # (ActiveDirectory)-[:Python]->(Neo4j) #
 #                                      #
-# Version: "First Make it work 1.1     #
+# Version: "First Make it work 1.2     #
 #                                      #
 ########################################
 
