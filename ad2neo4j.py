@@ -4,7 +4,7 @@
 #                                      #
 # (ActiveDirectory)-[:Python]->(Neo4j) #
 #                                      #
-# Version: "First Make it work #1"     #
+# Version: "First Make it work 1.1     #
 #                                      #
 ########################################
 
@@ -14,7 +14,7 @@
 #and make groupnodes in Neo4j.
 #Then get merge all memberOf and primaryGroupID with Neo4j
 #(object)-[:memberOf]->(group) and (user/computer)-[:memberOf{based on primaryGroupID]->(groep)
-#You need python-ldap3 and Neo4j
+#You need python-ldap3 and Neo4j https://neo4j.com/docs/operations-manual/3.1/installation/
 
 #This one is needed for some issue with Neo4j and Python and "datetime" values.
 import datetime
@@ -30,8 +30,8 @@ from sys import stdout
 #watch("neo4j.bolt", logging.DEBUG, stdout)
 
 #Make a connection with Active Directory
-server = Server('{ipaddress DomainController}', get_info=ALL) 
-conn = Connection(server, user="{Domain\\sAMAccountName}", password="{password}", authentication=NTLM)
+server = Server('{DC ipaddress}', get_info=ALL) 
+conn = Connection(server, user="{domain}\\{sAMAccountName}", password="{password}", authentication=NTLM)
 conn.bind()
 
 #Make a connection with the Neo4j database
@@ -40,6 +40,11 @@ session = driver.session()
 
 #clear all Nodes from last run
 session.run("MATCH (x) WHERE EXISTS(x.extra_info) DETACH DELETE x;")
+
+#Mandatory ActiveDirectory Attributes for merging the relations
+mandatory_person_attr = ["primaryGroupID","distinguishedName","memberOf"]
+mandatory_computer_attr = ["primaryGroupID","distinguishedName","memberOf"]
+mandatory_group_attr = ["primaryGroupToken","distinguishedName","memberOf"]
 
 #Here some functions
 #############################Welder##############################
@@ -66,29 +71,26 @@ def welder(ad_attr,node_label):
 #But be sure that de attribute exists in the Object (check AD object tab: "Attribute")
 #Empty AD Attribute values will NOT create a Neo4j attribute.
 #Get the first object: Person
-person_attributes = [
+person_attributes = list(set(mandatory_person_attr + [
 "givenName"
 ,"cn"
 ,"sAMAccountName"
-,"distinguishedName"
 ,"objectGUID"
 ,"objectSid"
 ,"userAccountControl"
 ,"uSNCreated"
-,"primaryGroupID"
-,"memberOf"
 ,"whenCreated"
 ,"whenChanged"
 ,"canonicalName"
 ,"description"
 ,"info"
 ,"managedBy"
-]
+]))
 #Search for Persons and get the attributes needed
-conn.search("DC=roel,DC=bos","(&(objectCategory=person)(objectClass=user))", attributes=person_attributes)
+conn.search("{DC=domain,DC=local}","(&(objectCategory=person)(objectClass=user))", attributes=person_attributes)
 #conn.entries[3].uSNCreated
 #Make the Nodes in Neo4j
-print(str(len(conn.entries)) + " persons_entrys")
+print(str(len(conn.entries)) + " persons_entries")
 for x in conn.entries:          
 #    print ("%s  %s  %s" % (x.distinguishedName.value, x.member, x.primaryGroupID))
 #    print(welder(person_attributes,"person"))
@@ -115,16 +117,13 @@ print("persons are made...")
 #But be sure that de attribute exists in the Object (check AD object tab: "Attribute")
 #Empty AD Attribute values will NOT create a Neo4j attribute.
 #Get the second object: Computer
-computer_attributes = [
+computer_attributes = list(set(mandatory_computer_attr + [
 "cn"
 ,"sAMAccountName"
-,"distinguishedName"
 ,"objectGUID"
 ,"objectSid"
 ,"userAccountControl"
 ,"uSNCreated"
-,"primaryGroupID"
-,"memberOf"
 ,"whenCreated"
 ,"whenChanged"
 ,"canonicalName"
@@ -133,11 +132,11 @@ computer_attributes = [
 ,"description"
 ,"info"
 ,"managedBy"
-]
+]))
 #Search for Computers and get the attributes needed
-conn.search("DC=roel,DC=bos","(objectCategory=computer)", attributes=computer_attributes)
+conn.search("{DC=domain,DC=local}","(objectCategory=computer)", attributes=computer_attributes)
 #Make the Nodes in Neo4j
-print(str(len(conn.entries)) + " computer_entrys")
+print(str(len(conn.entries)) + " computer_entries")
 for x in conn.entries:          
     #Create a dict with the AD attributes as "keys" and there value extracted from AD.
     neo_advalues_dict = {}    
@@ -160,27 +159,24 @@ print("computers are made")
 #But be sure that de attribute exists in the Object (check AD object tab: "Attribute")
 #Empty AD Attribute values will NOT create a Neo4j attribute.
 #Get the third object: Group
-group_attributes = [
+group_attributes = list(set(mandatory_group_attr + [
 "cn"
 ,"sAMAccountName"
-,"distinguishedName"
 ,"objectGUID"
 ,"objectSid"
 ,"userAccountControl"
 ,"uSNCreated"
-,"primaryGroupToken"
-,"memberOf"
 ,"whenCreated"
 ,"whenChanged"
 ,"canonicalName"
 ,"description"
 ,"info"
 ,"managedBy"
-]
+]))
 #Search for group and get the attributes needed
-conn.search("DC=roel,DC=bos","(objectCategory=group)", attributes=group_attributes)
+conn.search("{DC=domain,DC=local}","(objectCategory=group)", attributes=group_attributes)
 #Make the Nodes in Neo4js
-print(str(len(conn.entries)) + " group_entrys")
+print(str(len(conn.entries)) + " group_entries")
 for x in conn.entries:          
     #Create a dict with the AD attributes as "keys" and there value extracted from AD.
     neo_advalues_dict = {}    
@@ -205,6 +201,7 @@ session.run("CREATE CONSTRAINT ON (p:person) ASSERT p.distinguishedName IS UNIQU
 session.run("CREATE CONSTRAINT ON (c:computer) ASSERT c.distinguishedName IS UNIQUE;")
 session.run("CREATE CONSTRAINT ON (g:group) ASSERT g.distinguishedName IS UNIQUE;")
 session.run("CREATE INDEX ON :group(primaryGroupToken);")
+session.run("CALL db.awaitIndexes(600);")
 #Maybe more indexes etc..
 #Now make the relations with members of group
 #First the "special" relation with persons and computers and there primaryGroupID
