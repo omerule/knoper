@@ -4,7 +4,7 @@ Version: nr1 "First Make it work."
 
 This script is for retrieving ActiveDirectory objects and insert these objects in a Neo4j Graph database to visualize there relationships based on groupmembership.
 
-For this srcipt I used Fedora 27, ActiveDirectory, a Domain account, Neo4j, Python.
+For this script I used Fedora 27, ActiveDirectory, a Domain account, Neo4j, Python.
 This is the first version tested on a small ActiveDirectory.
 
 To run the script on Linux you need to make it executable first with chmod +x {sriptname}.
