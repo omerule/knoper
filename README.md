@@ -1,8 +1,15 @@
-# knoper
-LDAP, NTFS ACE and ~ > Neo4j
+# (ActiveDirectory)-[:Python]->(Neo4j)
 
-First script for retrieving ActiveDirectory objects and there relations in Neo4j Graph database.
+Version: nr1 "First Make it work."
 
-# (ActiveDirectory)-[:Python]->(Neo4j) 
+This script is for retrieving ActiveDirectory objects and insert these objects in a Neo4j Graph database to visualize there relationships based on groupmembership.
 
-# Version: nr1 "First Make it work."
+For this script I used Fedora 27, ActiveDirectory, a Domain account, Neo4j, Python.
+This is the first version tested on a small ActiveDirectory.
+
+To run the script on Linux you need to make it executable first with chmod +x {scriptname}.
+Then and open the script with a texteditor and adjust the values of the fields with {} and save the file. You can run it with ./{scriptname} if there are no errors, the Neo4j GraphDB is filled. Now you can go to the graph database with http://localhost:7474. And query MATCH x=()-[:memberof]->() RETURN x LIMIT 30;.
+
+
+
+
