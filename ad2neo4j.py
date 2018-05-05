@@ -47,7 +47,7 @@ ldap_comp_scope = "" #example OU=Computers,DC=domain,DC=local
 ldap_group_scope = "" #example DC=domain,DC=local
 
 #Person, Computer and Group attributes will be added to the Graph Node as property
-#note: the Attributes must exist in de ActiveDirectory please check before use 
+#note: the Attributes must exist in the ActiveDirectory please check before use 
 person_attributes = [
 "givenName"
 ,"cn"
