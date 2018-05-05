@@ -36,7 +36,7 @@ from sys import stdout
 #watch("neo4j.bolt", logging.DEBUG, stdout)
 
 #Adjust these variable for your own environment
-domain_ip = "" #example 1.2.3.4
+domain_ip = "1.2.3.4" #The IPv4 address of the DomainController
 domain_name = "" #example domain.local
 domain_user = "" #your domain login account
 domain_pass = "" #domain password
@@ -46,8 +46,12 @@ ldap_pers_scope = "" #example OU=Users,DC=domain,DC=local
 ldap_comp_scope = "" #example OU=Computers,DC=domain,DC=local
 ldap_group_scope = "" #example DC=domain,DC=local
 
-#Person, Computer and Group attributes will be added to the Graph Node as property
-#note: the Attributes must exist in the ActiveDirectory please check before use 
+#Person, Computer and Group Attributes will be added to the Graph Node as Property and there Value
+#Make a List of the Attributes you need from the AD Object you can add more
+#Warning: The Attributes must exist in the ActiveDirectory please check before use.
+#Note: Empty AD Attribute values will NOT create a Neo4j Property.
+#Note: Attributes Names are Case Sensitive Check the Microsoft Site 
+#Warning: Attribute Names with a hyphen "-" don't work.
 person_attributes = [
 "givenName"
 ,"cn"
@@ -142,10 +146,6 @@ def welder(ad_attr,node_label):
 
 ########################Get AD values and Fill Neo4j Graph DB##################################
 #First we "fill" de Neo4j graph Database with ActiveDirectory objects:
-#   Persons, Computers and Groups
-#Make a list of the attributes you need from the Object you can add more
-#But be sure that de attribute exists in the Object (check AD object tab: "Attribute")
-#Empty AD Attribute values will NOT create a Neo4j attribute.
 #Get the first object: Person
 person_attributes = list(set(person_attributes + mandatory_person_attr))
 #Search for Persons and get the attributes needed
@@ -244,6 +244,8 @@ print("groups are made")
 #Next make relation between Persons/Computers/Groups and Groups
 #memberOf for Persons/Computers/Groups
 #And PrimaryGroupID for Persons and Computers 
+#The idea is to have all indexes be ready before using them.
+#Not sure if this will work:
 session.run("CALL db.awaitIndexes(600);")
 #Maybe more indexes etc..
 #Now make the relations with members of group
