@@ -1,10 +1,11 @@
+
 #!/usr/bin/env python
 
 ########################################
 #                                      #
 # (ActiveDirectory)-[:Python]->(Neo4j) #
 #                                      #
-# Version: "First Make it work 1.3     #
+# Version: "First Make it work 1.6     #
 #                                      #
 ########################################
 
@@ -12,39 +13,114 @@
 #And put the objects in Neo4j as "nodes" and make a relations with AD groups and there members
 #The flow of the program is get all group, computer and person objects from Active Directory 
 #and make groupnodes in Neo4j.
-#Then get merge all relations between memberOf and primaryGroupID with Neo4j
-#(object)-[:memberOf]->(group) and (user/computer)-[:memberOf{based on primaryGroupID]->(group)
+#Then get merge all memberOf and primaryGroupID with Neo4j
+#(object)-[:memberOf]->(group) and (user/computer)-[:memberOf{based on primaryGroupID]->(groep)
 #You need python-ldap3 and Neo4j https://neo4j.com/docs/operations-manual/3.1/installation/
 
 #This one is needed for some issue with Neo4j and Python and "datetime" values.
 import datetime
 #You can install ldap3 with $pip install ldap3
-from ldap3 import Server, Connection, ALL, NTLM 
+from ldap3 import Server, Connection, ALL, NTLM, SUBTREE 
 #You can install neo4j.driver with $pip install neo4j-driver
 from neo4j.v1 import GraphDatabase, basic_auth
 
 from neo4j.util import watch
 import logging
 from sys import stdout
+
+#################################################################
+#                   Begin User Space                            #
+#################################################################
+
 #Debug on/off
 #watch("neo4j.bolt", logging.DEBUG, stdout)
 
-#Make a connection with Active Directory
-server = Server('{DC ipaddress}', get_info=ALL) 
-conn = Connection(server, user="{domain}\\{sAMAccountName}", password="{password}", authentication=NTLM)
-conn.bind()
+#Adjust these variable for your own environment
+domain_ip = "" #example 1.2.3.4
+domain_name = "" #example domain.local
+domain_user = "" #your domain login account
+domain_pass = "" #domain password
+neo4j_user = "" #default user
+neo4j_pass = "" #neo4j password
+ldap_pers_scope = "" #example OU=Users,DC=domain,DC=local
+ldap_comp_scope = "" #example OU=Computers,DC=domain,DC=local
+ldap_group_scope = "" #example DC=domain,DC=local
 
-#Make a connection with the Neo4j database
-driver = GraphDatabase.driver("bolt://localhost:7687", auth=basic_auth("neo4j", "{password}"))
-session = driver.session()
+#Person, Computer and Group attributes will be added to the Graph Node as property
+#note: the Attributes must exist in de ActiveDirectory please check before use 
+person_attributes = [
+"givenName"
+,"cn"
+,"sAMAccountName"
+,"objectGUID"
+,"objectSid"
+,"userAccountControl"
+,"uSNCreated"
+,"whenCreated"
+,"whenChanged"
+,"canonicalName"
+,"description"
+,"info"
+]
 
-#clear all Nodes from last run
-session.run("MATCH (x) WHERE EXISTS(x.extra_info) DETACH DELETE x;")
+computer_attributes = [
+"cn"
+,"sAMAccountName"
+,"objectGUID"
+,"objectSid"
+,"userAccountControl"
+,"uSNCreated"
+,"whenCreated"
+,"whenChanged"
+,"canonicalName"
+,"operatingSystem"
+,"dNSHostName"
+,"description"
+,"info"
+,"managedBy"
+]
+
+group_attributes = [
+"cn"
+,"sAMAccountName"
+,"objectGUID"
+,"objectSid"
+,"userAccountControl"
+,"uSNCreated"
+,"whenCreated"
+,"whenChanged"
+,"canonicalName"
+,"description"
+,"info"
+,"managedBy"
+,"groupType"
+]
+#################################################################
+#                         End User Space                        # 
+#################################################################
 
 #Mandatory ActiveDirectory Attributes for merging the relations
 mandatory_person_attr = ["primaryGroupID","distinguishedName","memberOf"]
 mandatory_computer_attr = ["primaryGroupID","distinguishedName","memberOf"]
 mandatory_group_attr = ["primaryGroupToken","distinguishedName","memberOf"]
+
+#Make a connection with Active Directory
+server = Server(domain_ip, get_info=ALL) 
+conn = Connection(server, user="{}\\{}".format(domain_name,domain_user), password=domain_pass, authentication=NTLM, read_only=True)
+conn.bind()
+
+#Make a connection with the Neo4j database
+driver = GraphDatabase.driver("bolt://localhost:7687", auth=basic_auth(neo4j_user, neo4j_pass))
+session = driver.session()
+
+#clear all Nodes from last run
+session.run("MATCH (x) WHERE EXISTS(x.extra_info) DETACH DELETE x;")
+
+#Prepare the Neo4j Graph Database for receiving LDAP data
+session.run("CREATE CONSTRAINT ON (p:person) ASSERT p.distinguishedName IS UNIQUE;")
+session.run("CREATE CONSTRAINT ON (c:computer) ASSERT c.distinguishedName IS UNIQUE;")
+session.run("CREATE CONSTRAINT ON (g:group) ASSERT g.distinguishedName IS UNIQUE;")
+session.run("CREATE INDEX ON :group(primaryGroupToken);")
 
 #Here some functions
 #############################Welder##############################
@@ -71,26 +147,20 @@ def welder(ad_attr,node_label):
 #But be sure that de attribute exists in the Object (check AD object tab: "Attribute")
 #Empty AD Attribute values will NOT create a Neo4j attribute.
 #Get the first object: Person
-person_attributes = list(set(mandatory_person_attr + [
-"givenName"
-,"cn"
-,"sAMAccountName"
-,"objectGUID"
-,"objectSid"
-,"userAccountControl"
-,"uSNCreated"
-,"whenCreated"
-,"whenChanged"
-,"canonicalName"
-,"description"
-,"info"
-,"managedBy"
-]))
+person_attributes = list(set(person_attributes + mandatory_person_attr))
 #Search for Persons and get the attributes needed
-conn.search("{DC=domain,DC=local}","(&(objectCategory=person)(objectClass=user))", attributes=person_attributes)
+conn.extend.standard.paged_search(search_base = ldap_pers_scope,
+                                           search_filter = '(&(objectCategory=person)(objectClass=user))',
+                                            search_scope = SUBTREE,
+                                            attributes = person_attributes,
+                                            paged_size = 5,
+                                            generator=False)
+
 #Make the Nodes in Neo4j
 print(str(len(conn.entries)) + " persons_entries")
 for x in conn.entries:          
+#    print ("%s  %s  %s" % (x.distinguishedName.value, x.member, x.primaryGroupID))
+#    print(welder(person_attributes,"person"))
     #Create a dict with the AD attributes as "keys" and there value extracted from AD.
     neo_advalues_dict = {}    
     for y in person_attributes:
@@ -101,9 +171,9 @@ for x in conn.entries:
         else:
             neo_advalues_dict[y] = x[y].value
     neo_advalues_dict["extra_info"] = "hello world!"
-    #Create the Node(s) with cypherquerys 
+    
+    
     session.run(welder(neo_advalues_dict.keys(), "person"), neo_advalues_dict)
-
 print("persons are made...")
 #################################################################
 
@@ -111,24 +181,15 @@ print("persons are made...")
 #But be sure that de attribute exists in the Object (check AD object tab: "Attribute")
 #Empty AD Attribute values will NOT create a Neo4j attribute.
 #Get the second object: Computer
-computer_attributes = list(set(mandatory_computer_attr + [
-"cn"
-,"sAMAccountName"
-,"objectGUID"
-,"objectSid"
-,"userAccountControl"
-,"uSNCreated"
-,"whenCreated"
-,"whenChanged"
-,"canonicalName"
-,"operatingSystem"
-,"dNSHostName"
-,"description"
-,"info"
-,"managedBy"
-]))
+computer_attributes = list(set(computer_attributes + mandatory_computer_attr))
 #Search for Computers and get the attributes needed
-conn.search("{DC=domain,DC=local}","(objectCategory=computer)", attributes=computer_attributes)
+conn.extend.standard.paged_search(search_base = ldap_comp_scope,
+                                           search_filter = '(objectCategory=computer)',
+                                            search_scope = SUBTREE,
+                                            attributes = computer_attributes,
+                                            paged_size = 5,
+                                            generator=False)
+
 #Make the Nodes in Neo4j
 print(str(len(conn.entries)) + " computer_entries")
 for x in conn.entries:          
@@ -153,22 +214,15 @@ print("computers are made")
 #But be sure that de attribute exists in the Object (check AD object tab: "Attribute")
 #Empty AD Attribute values will NOT create a Neo4j attribute.
 #Get the third object: Group
-group_attributes = list(set(mandatory_group_attr + [
-"cn"
-,"sAMAccountName"
-,"objectGUID"
-,"objectSid"
-,"userAccountControl"
-,"uSNCreated"
-,"whenCreated"
-,"whenChanged"
-,"canonicalName"
-,"description"
-,"info"
-,"managedBy"
-]))
+group_attributes = list(set(group_attributes + mandatory_group_attr))
 #Search for group and get the attributes needed
-conn.search("{DC=domain,DC=local}","(objectCategory=group)", attributes=group_attributes)
+conn.extend.standard.paged_search(search_base = ldap_group_scope,
+                                           search_filter = '(objectCategory=group)',
+                                            search_scope = SUBTREE,
+                                            attributes = group_attributes,
+                                            paged_size = 5,
+                                            generator=False)
+
 #Make the Nodes in Neo4js
 print(str(len(conn.entries)) + " group_entries")
 for x in conn.entries:          
@@ -188,14 +242,8 @@ for x in conn.entries:
 print("groups are made")
 #################################################################
 #Next make relation between Persons/Computers/Groups and Groups
-#First create indexes on keys where going to use:
 #memberOf for Persons/Computers/Groups
 #And PrimaryGroupID for Persons and Computers 
-session.run("CREATE CONSTRAINT ON (p:person) ASSERT p.distinguishedName IS UNIQUE;")
-session.run("CREATE CONSTRAINT ON (c:computer) ASSERT c.distinguishedName IS UNIQUE;")
-session.run("CREATE CONSTRAINT ON (g:group) ASSERT g.distinguishedName IS UNIQUE;")
-session.run("CREATE INDEX ON :group(primaryGroupToken);")
-#I'am not sure if this will "pause"  the rest of the cypher querys
 session.run("CALL db.awaitIndexes(600);")
 #Maybe more indexes etc..
 #Now make the relations with members of group
@@ -211,5 +259,9 @@ session.run("""MATCH (x) WHERE EXISTS(x.memberOf)
             MATCH (g:group) WHERE g.distinguishedName = memofx 
             MERGE (x)-[:memberof]->(g);""")
 print("Group/Person/Computer relation with group is made.")
-
-session.close()
+#close the Connection with Neo4j
+print(session.close())
+#Close the Connection with ActiveDirectory
+print(conn.unbind())
+print("finished")
+exit()
