@@ -1,11 +1,10 @@
-
 #!/usr/bin/env python
 
 ########################################
 #                                      #
 # (ActiveDirectory)-[:Python]->(Neo4j) #
 #                                      #
-# Version: "First Make it work 1.6     #
+# Version: "First Make it work 1.7     #
 #                                      #
 ########################################
 
@@ -35,16 +34,17 @@ from sys import stdout
 #Debug on/off
 #watch("neo4j.bolt", logging.DEBUG, stdout)
 
-#Adjust these variable for your own environment
-domain_ip = "1.2.3.4" #The IPv4 address of the DomainController
-domain_name = "" #example domain.local
-domain_user = "" #your domain login account
-domain_pass = "" #domain password
-neo4j_user = "" #default user
-neo4j_pass = "" #neo4j password
-ldap_pers_scope = "" #example OU=Users,DC=domain,DC=local
-ldap_comp_scope = "" #example OU=Computers,DC=domain,DC=local
-ldap_group_scope = "" #example DC=domain,DC=local
+#Adjust these variable for your own environment 
+#note: make "{password}" like "password" without the '{}'.
+domain_ip = "{domaincontroller ipaddress}" #The IPv4 address of the DomainController
+domain_name = "{contoso.com}" #example domain.local
+domain_user = "{domain user account}" #your domain login account
+domain_pass = "{password}" #domain password
+neo4j_user = "{Neo4j loginname}" #default user
+neo4j_pass = "{password}" #neo4j password
+ldap_pers_scope = "{DC=contoso,DC=com}" #example OU=Users,DC=domain,DC=local
+ldap_comp_scope = "{DC=contoso,DC=com}" #example OU=Computers,DC=domain,DC=local
+ldap_group_scope = "{DC=contoso,DC=com}" #example DC=domain,DC=local
 
 #Person, Computer and Group Attributes will be added to the Graph Node as Property and there Value
 #Make a List of the Attributes you need from the AD Object you can add more
