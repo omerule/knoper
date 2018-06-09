@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 ########################################
 #                                      #
@@ -20,7 +20,7 @@
 import datetime
 #You can install ldap3 with $pip install ldap3
 from ldap3 import Server, Connection, ALL, NTLM, SUBTREE 
-#You can install neo4j.driver with $pip install neo4j-driver
+#You can install neo4j.driver with $pip3 install neo4j-driver
 from neo4j.v1 import GraphDatabase, basic_auth
 
 from neo4j.util import watch
