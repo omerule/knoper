@@ -4,7 +4,7 @@
 #                                      #
 # (ActiveDirectory)-[:Python]->(Neo4j) #
 #                                      #
-# Version: "First Make it work 1.7     #
+# Version: "First Make it work 1.8     #
 #                                      #
 ########################################
 
@@ -45,6 +45,8 @@ neo4j_pass = "{password}" #neo4j password
 ldap_pers_scope = "{DC=contoso,DC=com}" #example OU=Users,DC=domain,DC=local
 ldap_comp_scope = "{DC=contoso,DC=com}" #example OU=Computers,DC=domain,DC=local
 ldap_group_scope = "{DC=contoso,DC=com}" #example DC=domain,DC=local
+ldap_ou_scope = "{DC=contoso,DC=com}" #example DC=domain,DC=local
+
 
 #Person, Computer and Group Attributes will be added to the Graph Node as Property and there Value
 #Make a List of the Attributes you need from the AD Object you can add more
@@ -99,14 +101,23 @@ group_attributes = [
 ,"managedBy"
 ,"groupType"
 ]
+
+ou_attributes = [
+"objectGUID"
+,"objectSid"
+,"whenCreated"
+,"whenChanged"
+,"canonicalName"
+]
 #################################################################
 #                         End User Space                        # 
 #################################################################
 
 #Mandatory ActiveDirectory Attributes for merging the relations
-mandatory_person_attr = ["primaryGroupID","distinguishedName","memberOf"]
-mandatory_computer_attr = ["primaryGroupID","distinguishedName","memberOf"]
-mandatory_group_attr = ["primaryGroupToken","distinguishedName","memberOf"]
+mandatory_person_attr = ["primaryGroupID","distinguishedName","memberOf","objectCategory","name"]
+mandatory_computer_attr = ["primaryGroupID","distinguishedName","memberOf","objectCategory","name"]
+mandatory_group_attr = ["primaryGroupToken","distinguishedName","memberOf","objectCategory","name"]
+mandatory_ou_attr = ["distinguishedName","objectCategory","name"]
 
 #Make a connection with Active Directory
 server = Server(domain_ip, get_info=ALL) 
@@ -159,7 +170,7 @@ conn.extend.standard.paged_search(search_base = ldap_pers_scope,
 #Make the Nodes in Neo4j
 print(str(len(conn.entries)) + " persons_entries")
 for x in conn.entries:          
-#    print ("%s  %s  %s" % (x.distinguishedName.value, x.member, x.primaryGroupID))
+#    print ("%s   %s" % (x.ACL.value, x.primaryGroupID))
 #    print(welder(person_attributes,"person"))
     #Create a dict with the AD attributes as "keys" and there value extracted from AD.
     neo_advalues_dict = {}    
@@ -241,6 +252,37 @@ for x in conn.entries:
     session.run(welder(neo_advalues_dict.keys(), "group"), neo_advalues_dict)
 print("groups are made")
 #################################################################
+#Make a list of the attributes you need from the Object you can add more
+#But be sure that de attribute exists in the Object (check AD object tab: "Attribute")
+#Empty AD Attribute values will NOT create a Neo4j attribute.
+#Get the third object: OrganizationalUnits
+ou_attributes = list(set(ou_attributes + mandatory_ou_attr))
+#Search for OrganizationalUnits and get the attributes needed
+conn.extend.standard.paged_search(search_base = ldap_ou_scope,
+                                           search_filter = '(|(objectCategory=container)(objectCategory=builtinDomain)(objectCategory=domain)(objectCategory=organizationalUnit))',
+                                            search_scope = SUBTREE,
+                                            attributes = ou_attributes,
+                                            paged_size = 5,
+                                            generator=False)
+
+#Make the Nodes in Neo4js
+print(str(len(conn.entries)) + " ou_entries")
+for x in conn.entries:          
+    #Create a dict with the AD attributes as "keys" and there value extracted from AD.
+    neo_advalues_dict = {}    
+    for y in ou_attributes:
+        #There some converting Neo4j Python issue with datatime values so the "datetime" values collected
+        #from AD like "whenCreated" or "whenChanged" will be converted to "string".
+        if isinstance(x[y].value, datetime.date):
+            neo_advalues_dict[y] = str(x[y].value)
+        else:
+            neo_advalues_dict[y] = x[y].value
+    neo_advalues_dict["extra_info"] = "hello world!"
+
+    #print(welder(neo_advalues_dict.keys(), "group"), neo_advalues_dict)
+    session.run(welder(neo_advalues_dict.keys(), "ou"), neo_advalues_dict)
+print("OUs are made")
+#################################################################
 #Next make relation between Persons/Computers/Groups and Groups
 #memberOf for Persons/Computers/Groups
 #And PrimaryGroupID for Persons and Computers 
@@ -261,6 +303,15 @@ session.run("""MATCH (x) WHERE EXISTS(x.memberOf)
             MATCH (g:group) WHERE g.distinguishedName = memofx 
             MERGE (x)-[:memberof]->(g);""")
 print("Group/Person/Computer relation with group is made.")
+#The idea here is to make the relation with OrganizationalUnits/Containers where 
+#OU or Containers "holds" a other container or OU or Person/Group/Computer.
+#Something like (OU X)-[:holds]->(person Y)
+session.run("""MATCH (o) WHERE EXISTS(o.extra_info) 
+            WITH RIGHT(o.distinguishedName,(SIZE(o.distinguishedName)-SIZE(o.name)-4)) 
+            AS op, o 
+            MATCH (oo:ou) WHERE oo.distinguishedName = op 
+            MERGE (oo)-[:holds]->(o);""")
+print("OU/Container placeholder relation with object is made.")
 #close the Connection with Neo4j
 print(session.close())
 #Close the Connection with ActiveDirectory
