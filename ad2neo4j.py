@@ -4,13 +4,13 @@
 #                                      #
 # (ActiveDirectory)-[:Python]->(Neo4j) #
 #                                      #
-# Version: "First Make it work 1.8     #
+# Version: "First Make it work 1.9     #
 #                                      #
 ########################################
 
 #The Idea is to read almost all objects from a ActiveDirectory
 #And put the objects in Neo4j as "nodes" and make a relations with AD groups and there members
-#The flow of the program is get all group, computer and person objects from Active Directory 
+#The flow of the program is get all group, computer, ou and person objects from Active Directory 
 #and make groupnodes in Neo4j.
 #Then get merge all memberOf and primaryGroupID with Neo4j
 #(object)-[:memberOf]->(group) and (user/computer)-[:memberOf{based on primaryGroupID]->(groep)
@@ -22,11 +22,11 @@ import datetime
 from ldap3 import Server, Connection, ALL, NTLM, SUBTREE 
 #You can install neo4j.driver with $pip3 install neo4j-driver
 from neo4j.v1 import GraphDatabase, basic_auth
-
 from neo4j.util import watch
 import logging
 from sys import stdout
-
+import getpass
+import cmd
 #################################################################
 #                   Begin User Space                            #
 #################################################################
@@ -35,18 +35,12 @@ from sys import stdout
 #watch("neo4j.bolt", logging.DEBUG, stdout)
 
 #Adjust these variable for your own environment 
-#note: make "{password}" like "password" without the '{}'.
-domain_ip = "{domaincontroller ipaddress}" #The IPv4 address of the DomainController
-domain_name = "{contoso.com}" #example domain.local
-domain_user = "{domain user account}" #your domain login account
-domain_pass = "{password}" #domain password
-neo4j_user = "{Neo4j loginname}" #default user
-neo4j_pass = "{password}" #neo4j password
-ldap_pers_scope = "{DC=contoso,DC=com}" #example OU=Users,DC=domain,DC=local
-ldap_comp_scope = "{DC=contoso,DC=com}" #example OU=Computers,DC=domain,DC=local
-ldap_group_scope = "{DC=contoso,DC=com}" #example DC=domain,DC=local
-ldap_ou_scope = "{DC=contoso,DC=com}" #example DC=domain,DC=local
-
+domain_ip = "domaincontroller ipaddress" #The IPv4 address of the DomainController
+domain_name = "contoso.com" #example domain.local
+ldap_pers_scope = "DC=contoso,DC=com" #example OU=Users,DC=domain,DC=local
+ldap_comp_scope = "DC=contoso,DC=com" #example OU=Computers,DC=domain,DC=local
+ldap_group_scope = "DC=contoso,DC=com" #example DC=domain,DC=local
+ldap_ou_scope = "DC=contoso,DC=com" #example DC=domain,DC=local
 
 #Person, Computer and Group Attributes will be added to the Graph Node as Property and there Value
 #Make a List of the Attributes you need from the AD Object you can add more
@@ -112,6 +106,11 @@ ou_attributes = [
 #################################################################
 #                         End User Space                        # 
 #################################################################
+
+domain_user = input("domain account name: ") #your domain login account
+domain_pass = getpass.getpass("password domain user: ") #domain password
+neo4j_user = input("Neo4j loginname: ") #default user
+neo4j_pass = getpass.getpass("password Neo4j user: ") #neo4j password
 
 #Mandatory ActiveDirectory Attributes for merging the relations
 mandatory_person_attr = ["primaryGroupID","distinguishedName","memberOf","objectCategory","name"]
@@ -303,15 +302,6 @@ session.run("""MATCH (x) WHERE EXISTS(x.memberOf)
             MATCH (g:group) WHERE g.distinguishedName = memofx 
             MERGE (x)-[:memberof]->(g);""")
 print("Group/Person/Computer relation with group is made.")
-#The idea here is to make the relation with OrganizationalUnits/Containers where 
-#OU or Containers "holds" a other container or OU or Person/Group/Computer.
-#Something like (OU X)-[:holds]->(person Y)
-session.run("""MATCH (o) WHERE EXISTS(o.extra_info) 
-            WITH RIGHT(o.distinguishedName,(SIZE(o.distinguishedName)-SIZE(o.name)-4)) 
-            AS op, o 
-            MATCH (oo:ou) WHERE oo.distinguishedName = op 
-            MERGE (oo)-[:holds]->(o);""")
-print("OU/Container placeholder relation with object is made.")
 #close the Connection with Neo4j
 print(session.close())
 #Close the Connection with ActiveDirectory
