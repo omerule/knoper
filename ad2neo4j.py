@@ -4,7 +4,7 @@
 #                                      #
 # (ActiveDirectory)-[:Python]->(Neo4j) #
 #                                      #
-# Version: "First Make it work 1.9     #
+# Version: "First Make it work 2.0     #
 #                                      #
 ########################################
 
@@ -29,12 +29,12 @@ import getpass
 import cmd
 #################################################################
 #                   Begin User Space                            #
+#     Adjust these variable for your own environment            #
 #################################################################
 
 #Debug on/off
 #watch("neo4j.bolt", logging.DEBUG, stdout)
 
-#Adjust these variable for your own environment 
 domain_ip = "domaincontroller ipaddress" #The IPv4 address of the DomainController
 domain_name = "contoso.com" #example domain.local
 ldap_pers_scope = "DC=contoso,DC=com" #example OU=Users,DC=domain,DC=local
@@ -103,10 +103,12 @@ ou_attributes = [
 ,"whenChanged"
 ,"canonicalName"
 ]
+
 #################################################################
 #                         End User Space                        # 
 #################################################################
 
+#User input for connecting with AD and Neo4j
 domain_user = input("domain account name: ") #your domain login account
 domain_pass = getpass.getpass("password domain user: ") #domain password
 neo4j_user = input("Neo4j loginname: ") #default user
@@ -118,6 +120,13 @@ mandatory_computer_attr = ["primaryGroupID","distinguishedName","memberOf","obje
 mandatory_group_attr = ["primaryGroupToken","distinguishedName","memberOf","objectCategory","name"]
 mandatory_ou_attr = ["distinguishedName","objectCategory","name"]
 
+#And Merge the Attributes from "user space"  with the above Mandatory Attributes
+person_attributes = list(set(person_attributes + mandatory_person_attr))
+computer_attributes = list(set(computer_attributes + mandatory_computer_attr))
+group_attributes = list(set(group_attributes + mandatory_group_attr))
+ou_attributes = list(set(ou_attributes + mandatory_ou_attr))
+
+
 #Make a connection with Active Directory
 server = Server(domain_ip, get_info=ALL) 
 conn = Connection(server, user="{}\\{}".format(domain_name,domain_user), password=domain_pass, authentication=NTLM, read_only=True)
@@ -125,8 +134,10 @@ conn.bind()
 
 #Make a connection with the Neo4j database
 driver = GraphDatabase.driver("bolt://localhost:7687", auth=basic_auth(neo4j_user, neo4j_pass))
-session = driver.session()
 
+
+#First some cleanup and Preparation of the Neo4j GraphDB
+session = driver.session()
 #clear all Nodes from last run
 session.run("MATCH (x) WHERE EXISTS(x.extra_info) DETACH DELETE x;")
 
@@ -136,12 +147,14 @@ session.run("CREATE CONSTRAINT ON (c:computer) ASSERT c.distinguishedName IS UNI
 session.run("CREATE CONSTRAINT ON (g:group) ASSERT g.distinguishedName IS UNIQUE;")
 session.run("CREATE INDEX ON :group(primaryGroupToken);")
 
-#Here some functions
-#############################Welder##############################
-#try to make a welder for AD attributes 2 Neo4j attributes as cypher string
+
 def welder(ad_attr,node_label):
-    #This will return a "Cypher" plus "$" string like:
-    #CREATE (a:{label} SET a.{AD attribute name} = ${AD attribute name}
+    """
+    I try to make a welder for AD attributes for Neo4j attributes as 
+    cypher string
+    This will return a "Cypher" plus "$" string like:
+    CREATE (a:{label} SET a.{AD attribute name} = ${AD attribute name}
+    """
     comma = False 
     cypher = "CREATE (a:{}) SET ".format(node_label)
     for x in ad_attr:
@@ -151,156 +164,78 @@ def welder(ad_attr,node_label):
         else:
             cypher = cypher + ", a.{} = ${} \n".format(x,x)        
     return cypher 
-##################################################################
-#End Functions
 
-########################Get AD values and Fill Neo4j Graph DB##################################
-#First we "fill" de Neo4j graph Database with ActiveDirectory objects:
-#Get the first object: Person
-person_attributes = list(set(person_attributes + mandatory_person_attr))
-#Search for Persons and get the attributes needed
-conn.extend.standard.paged_search(search_base = ldap_pers_scope,
-                                           search_filter = '(&(objectCategory=person)(objectClass=user))',
-                                            search_scope = SUBTREE,
-                                            attributes = person_attributes,
-                                            paged_size = 5,
-                                            generator=False)
+def ad2neo4j(adfilter, adattr, adobject):
+    """
+    This function will read the Objects from Active Directory and put them in de Neo4j GraphDB. 
+    """
+    #Get the objects form Active Directory
+    conn.extend.standard.paged_search(search_base = ldap_pers_scope,
+                            search_filter = adfilter,
+                            search_scope = SUBTREE,
+                            attributes = adattr,
+                            paged_size = 5,
+                            generator=False)
 
-#Make the Nodes in Neo4j
-print(str(len(conn.entries)) + " persons_entries")
-for x in conn.entries:          
-#    print ("%s   %s" % (x.ACL.value, x.primaryGroupID))
-#    print(welder(person_attributes,"person"))
-    #Create a dict with the AD attributes as "keys" and there value extracted from AD.
-    neo_advalues_dict = {}    
-    for y in person_attributes:
-        #There some converting Neo4j Python issue with datatime values so the "datetime" values collected
-        #from AD like "whenCreated" or "whenChanged" will be converted to "string".
-        if isinstance(x[y].value, datetime.date):
-            neo_advalues_dict[y] = str(x[y].value)
-        else:
-            neo_advalues_dict[y] = x[y].value
-    neo_advalues_dict["extra_info"] = "hello world!"
+    print(str(len(conn.entries)) + " " + adobject)
     
+    session = driver.session()
+    tx = session.begin_transaction()
+
+
+    #Make the Nodes in Neo4j
+    for x in conn.entries:          
+        #Create a dict with the AD attributes as "keys" and there value extracted from AD.
+        neo_advalues_dict = {}    
+        for y in adattr:
+            #There some converting Neo4j Python issue with datatime values 
+            #so the "datetime" values collected from AD like
+            # "whenCreated" or "whenChanged" will be converted to "string".
+            if isinstance(x[y].value, datetime.date):
+                neo_advalues_dict[y] = str(x[y].value)
+            else:
+                neo_advalues_dict[y] = x[y].value
+        #This lable could be better
+        neo_advalues_dict["extra_info"] = "hello world!"
+
+        tx.run(welder(neo_advalues_dict.keys(), adobject), neo_advalues_dict)
     
-    session.run(welder(neo_advalues_dict.keys(), "person"), neo_advalues_dict)
-print("persons are made...")
-#################################################################
+    tx.commit()
+    print(adobject + "s are made...")
 
-#Make a list of the attributes you need from the Object you can add more
-#But be sure that de attribute exists in the Object (check AD object tab: "Attribute")
-#Empty AD Attribute values will NOT create a Neo4j attribute.
-#Get the second object: Computer
-computer_attributes = list(set(computer_attributes + mandatory_computer_attr))
-#Search for Computers and get the attributes needed
-conn.extend.standard.paged_search(search_base = ldap_comp_scope,
-                                           search_filter = '(objectCategory=computer)',
-                                            search_scope = SUBTREE,
-                                            attributes = computer_attributes,
-                                            paged_size = 5,
-                                            generator=False)
+ad2neo4j('(&(objectCategory=person)(objectClass=user))', person_attributes, 'person')
+ad2neo4j('(objectCategory=computer)', computer_attributes, 'computer')
+ad2neo4j('(objectCategory=group)', group_attributes, 'group')
+ad2neo4j('(|(objectCategory=container)(objectCategory=builtinDomain)(objectCategory=domain)(objectCategory=organizationalUnit))', ou_attributes, 'ou')
 
-#Make the Nodes in Neo4j
-print(str(len(conn.entries)) + " computer_entries")
-for x in conn.entries:          
-    #Create a dict with the AD attributes as "keys" and there value extracted from AD.
-    neo_advalues_dict = {}    
-    for y in computer_attributes:
-        #There some converting Neo4j Python issue with datatime values so the "datetime" values collected
-        #from AD like "whenCreated" or "whenChanged" will be converted to "string".
-        if isinstance(x[y].value, datetime.date):
-            neo_advalues_dict[y] = str(x[y].value)
-        else:
-            neo_advalues_dict[y] = x[y].value
-    neo_advalues_dict["extra_info"] = "hello world!"
-
-    #print(welder(neo_advalues_dict.keys(), "computer"), neo_advalues_dict)
-    session.run(welder(neo_advalues_dict.keys(), "computer"), neo_advalues_dict)
-    
-print("computers are made")
-#################################################################
-
-#Make a list of the attributes you need from the Object you can add more
-#But be sure that de attribute exists in the Object (check AD object tab: "Attribute")
-#Empty AD Attribute values will NOT create a Neo4j attribute.
-#Get the third object: Group
-group_attributes = list(set(group_attributes + mandatory_group_attr))
-#Search for group and get the attributes needed
-conn.extend.standard.paged_search(search_base = ldap_group_scope,
-                                           search_filter = '(objectCategory=group)',
-                                            search_scope = SUBTREE,
-                                            attributes = group_attributes,
-                                            paged_size = 5,
-                                            generator=False)
-
-#Make the Nodes in Neo4js
-print(str(len(conn.entries)) + " group_entries")
-for x in conn.entries:          
-    #Create a dict with the AD attributes as "keys" and there value extracted from AD.
-    neo_advalues_dict = {}    
-    for y in group_attributes:
-        #There some converting Neo4j Python issue with datatime values so the "datetime" values collected
-        #from AD like "whenCreated" or "whenChanged" will be converted to "string".
-        if isinstance(x[y].value, datetime.date):
-            neo_advalues_dict[y] = str(x[y].value)
-        else:
-            neo_advalues_dict[y] = x[y].value
-    neo_advalues_dict["extra_info"] = "hello world!"
-
-    #print(welder(neo_advalues_dict.keys(), "group"), neo_advalues_dict)
-    session.run(welder(neo_advalues_dict.keys(), "group"), neo_advalues_dict)
-print("groups are made")
-#################################################################
-#Make a list of the attributes you need from the Object you can add more
-#But be sure that de attribute exists in the Object (check AD object tab: "Attribute")
-#Empty AD Attribute values will NOT create a Neo4j attribute.
-#Get the third object: OrganizationalUnits
-ou_attributes = list(set(ou_attributes + mandatory_ou_attr))
-#Search for OrganizationalUnits and get the attributes needed
-conn.extend.standard.paged_search(search_base = ldap_ou_scope,
-                                           search_filter = '(|(objectCategory=container)(objectCategory=builtinDomain)(objectCategory=domain)(objectCategory=organizationalUnit))',
-                                            search_scope = SUBTREE,
-                                            attributes = ou_attributes,
-                                            paged_size = 5,
-                                            generator=False)
-
-#Make the Nodes in Neo4js
-print(str(len(conn.entries)) + " ou_entries")
-for x in conn.entries:          
-    #Create a dict with the AD attributes as "keys" and there value extracted from AD.
-    neo_advalues_dict = {}    
-    for y in ou_attributes:
-        #There some converting Neo4j Python issue with datatime values so the "datetime" values collected
-        #from AD like "whenCreated" or "whenChanged" will be converted to "string".
-        if isinstance(x[y].value, datetime.date):
-            neo_advalues_dict[y] = str(x[y].value)
-        else:
-            neo_advalues_dict[y] = x[y].value
-    neo_advalues_dict["extra_info"] = "hello world!"
-
-    #print(welder(neo_advalues_dict.keys(), "group"), neo_advalues_dict)
-    session.run(welder(neo_advalues_dict.keys(), "ou"), neo_advalues_dict)
-print("OUs are made")
-#################################################################
 #Next make relation between Persons/Computers/Groups and Groups
 #memberOf for Persons/Computers/Groups
 #And PrimaryGroupID for Persons and Computers 
 #The idea is to have all indexes be ready before using them.
 #Not sure if this will work:
-session.run("CALL db.awaitIndexes(600);")
-#Maybe more indexes etc..
+
+session = driver.session()
+tx = session.begin_transaction()
+tx.run("CALL db.awaitIndexes(600);")
+tx.commit()
 #Now make the relations with members of group
 #First the "special" relation with persons and computers and there primaryGroupID
-session.run("""MATCH (x) WHERE NOT x:group AND EXISTS(x.extra_info) AND EXISTS(x.primaryGroupID) 
+session = driver.session()
+tx = session.begin_transaction()
+tx.run("""MATCH (x) WHERE NOT x:group AND EXISTS(x.extra_info) AND EXISTS(x.primaryGroupID) 
             WITH x, x.primaryGroupID AS pgid 
             MATCH (g:group) WHERE g.primaryGroupToken = pgid 
             MERGE (x)-[:memberof]->(g);""")
+tx.commit()
 print("Person/Computer primarygroup relation is made.")
 #And create a match between (x)-[:memberof]->(group)
-session.run("""MATCH (x) WHERE EXISTS(x.memberOf) 
+session = driver.session()
+tx = session.begin_transaction()
+tx.run("""MATCH (x) WHERE EXISTS(x.memberOf) 
             WITH x, x.memberOf AS memof UNWIND memof AS memofx 
             MATCH (g:group) WHERE g.distinguishedName = memofx 
             MERGE (x)-[:memberof]->(g);""")
+tx.commit()
 print("Group/Person/Computer relation with group is made.")
 #close the Connection with Neo4j
 print(session.close())
