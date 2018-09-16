@@ -6,13 +6,12 @@
 # Version: "First Make it work 2.2     #
 #                                      #
 ########################################
-#And put the objects in Neo4j as "nodes" and make a relations with AD groups and there members
-#The flow of the program is get all group, computer, and person objects from Active Directory 
-#and make groupnodes in Neo4j.
-#Then get merge all member and primaryGroupID with Neo4j
-#(object)-[:member]->(group) and (user/computer)-[:member{based on primaryGroupID]->(groep)
-#You need Active Directory, Python with python-ldap3 
-#and Neo4j https://neo4j.com/docs/operations-manual/3.1/installation/
+#The flow of the program is: 
+#Get all group, computer, and person objects from Active Directory,
+#and put them in the Neo4j GraphDatabase.
+#Then create a relation between group and there members.
+#Then you can explore these relationships with Neo4j.
+#You need Active Directory, Python with python-ldap3 and Neo4j
 import datetime
 #You can install ldap3 with $pip install ldap3
 from ldap3 import Server, Connection, ALL, NTLM, SUBTREE 
@@ -23,6 +22,7 @@ import logging
 from sys import stdout
 import getpass
 import cmd
+
 #################################################################
 #                   Begin User Space                            #
 #     Adjust these variable for your own environment            #
@@ -38,12 +38,16 @@ ldap_comp_scope = "DC=contoso,DC=com" #example OU=Computers,DC=domain,DC=local
 ldap_group_scope = "DC=contoso,DC=com" #example DC=domain,DC=local
 ldap_ou_scope = "DC=contoso,DC=com" #example DC=domain,DC=local
 
+#You can add extra Active Directory Attributes of you need more.
+#Some notes:
 #Person, Computer and Group Attributes will be added to the Graph Node as Property and there Value
-#Make a List of the Attributes you need from the AD Object you can add more
 #Warning: The Attributes must exist in the ActiveDirectory please check before use.
 #Note: Empty AD Attribute values will NOT create a Neo4j Property.
-#Note: Attributes Names are Case Sensitive Check the Microsoft Site 
+#Note: AD Attributes Names are Case Sensitive see: 
+#   https://docs.microsoft.com/en-us/windows/desktop/ADSchema/a-accountexpires 
+#   When you find a attribute see field: use the "Ldap-Display-Name" notation.
 #Warning: Attribute Names with a hyphen "-" don't work.
+#Warning: Not all Attributes will work with the LDAP python driver.
 person_attributes = [
 "givenName"
 ,"cn"
@@ -91,6 +95,7 @@ group_attributes = [
 ,"managedBy"
 ,"groupType"
 ]
+
 #################################################################
 #                         End User Space                        # 
 #################################################################
@@ -175,7 +180,7 @@ def ad2neo4j(adfilter, adattr, adobject):
                 neo_advalues_dict[y] = str(x[y].value)
             else:
                 neo_advalues_dict[y] = x[y].value
-        #This lable could be better
+        #This label should be better
         neo_advalues_dict["extra_info"] = "hello world!"
 
         tx.run(welder(neo_advalues_dict.keys(), adobject), neo_advalues_dict)
