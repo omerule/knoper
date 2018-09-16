@@ -4,7 +4,7 @@
 #                                      #
 # (ActiveDirectory)-[:Python]->(Neo4j) #
 #                                      #
-# Version: "First Make it work 2.0     #
+# Version: "First Make it work 2.1     #
 #                                      #
 ########################################
 
@@ -96,13 +96,13 @@ group_attributes = [
 ,"groupType"
 ]
 
-ou_attributes = [
-"objectGUID"
-,"objectSid"
-,"whenCreated"
-,"whenChanged"
-,"canonicalName"
-]
+#ou_attributes = [
+#"objectGUID"
+#,"objectSid"
+#,"whenCreated"
+#,"whenChanged"
+#,"canonicalName"
+#]
 
 #################################################################
 #                         End User Space                        # 
@@ -115,17 +115,16 @@ neo4j_user = input("Neo4j loginname: ") #default user
 neo4j_pass = getpass.getpass("password Neo4j user: ") #neo4j password
 
 #Mandatory ActiveDirectory Attributes for merging the relations
-mandatory_person_attr = ["primaryGroupID","distinguishedName","memberOf","objectCategory","name"]
-mandatory_computer_attr = ["primaryGroupID","distinguishedName","memberOf","objectCategory","name"]
-mandatory_group_attr = ["primaryGroupToken","distinguishedName","memberOf","objectCategory","name"]
-mandatory_ou_attr = ["distinguishedName","objectCategory","name"]
+mandatory_person_attr = ["primaryGroupID","distinguishedName","objectCategory","name"]
+mandatory_computer_attr = ["primaryGroupID","distinguishedName","objectCategory","name"]
+mandatory_group_attr = ["primaryGroupToken","distinguishedName","member","objectCategory","name"]
+#mandatory_ou_attr = ["distinguishedName","objectCategory","name"]
 
 #And Merge the Attributes from "user space"  with the above Mandatory Attributes
 person_attributes = list(set(person_attributes + mandatory_person_attr))
 computer_attributes = list(set(computer_attributes + mandatory_computer_attr))
 group_attributes = list(set(group_attributes + mandatory_group_attr))
-ou_attributes = list(set(ou_attributes + mandatory_ou_attr))
-
+#ou_attributes = list(set(ou_attributes + mandatory_ou_attr))
 
 #Make a connection with Active Directory
 server = Server(domain_ip, get_info=ALL) 
@@ -135,18 +134,16 @@ conn.bind()
 #Make a connection with the Neo4j database
 driver = GraphDatabase.driver("bolt://localhost:7687", auth=basic_auth(neo4j_user, neo4j_pass))
 
-
 #First some cleanup and Preparation of the Neo4j GraphDB
 session = driver.session()
-#clear all Nodes from last run
 session.run("MATCH (x) WHERE EXISTS(x.extra_info) DETACH DELETE x;")
-
-#Prepare the Neo4j Graph Database for receiving LDAP data
 session.run("CREATE CONSTRAINT ON (p:person) ASSERT p.distinguishedName IS UNIQUE;")
 session.run("CREATE CONSTRAINT ON (c:computer) ASSERT c.distinguishedName IS UNIQUE;")
 session.run("CREATE CONSTRAINT ON (g:group) ASSERT g.distinguishedName IS UNIQUE;")
+#session.run("CREATE CONSTRAINT ON (o:ou) ASSERT o.distinguishedName IS UNIQUE;")
 session.run("CREATE INDEX ON :group(primaryGroupToken);")
-
+session.run("CREATE INDEX ON :computer(primaryGroupID);")
+session.run("CREATE INDEX ON :person(primaryGroupID);")
 
 def welder(ad_attr,node_label):
     """
@@ -206,14 +203,12 @@ def ad2neo4j(adfilter, adattr, adobject):
 ad2neo4j('(&(objectCategory=person)(objectClass=user))', person_attributes, 'person')
 ad2neo4j('(objectCategory=computer)', computer_attributes, 'computer')
 ad2neo4j('(objectCategory=group)', group_attributes, 'group')
-ad2neo4j('(|(objectCategory=container)(objectCategory=builtinDomain)(objectCategory=domain)(objectCategory=organizationalUnit))', ou_attributes, 'ou')
+#ad2neo4j('(|(objectCategory=container)(objectCategory=builtinDomain)(objectCategory=domain)(objectCategory=organizationalUnit))', ou_attributes, 'ou')
 
 #Next make relation between Persons/Computers/Groups and Groups
-#memberOf for Persons/Computers/Groups
 #And PrimaryGroupID for Persons and Computers 
 #The idea is to have all indexes be ready before using them.
 #Not sure if this will work:
-
 session = driver.session()
 tx = session.begin_transaction()
 tx.run("CALL db.awaitIndexes(600);")
@@ -222,19 +217,20 @@ tx.commit()
 #First the "special" relation with persons and computers and there primaryGroupID
 session = driver.session()
 tx = session.begin_transaction()
-tx.run("""MATCH (x) WHERE NOT x:group AND EXISTS(x.extra_info) AND EXISTS(x.primaryGroupID) 
+tx.run("""MATCH (x) WHERE EXISTS(x.extra_info) AND EXISTS(x.primaryGroupID) 
             WITH x, x.primaryGroupID AS pgid 
             MATCH (g:group) WHERE g.primaryGroupToken = pgid 
-            MERGE (x)-[:memberof]->(g);""")
+            MERGE (g)-[:member]->(x);""")
 tx.commit()
 print("Person/Computer primarygroup relation is made.")
-#And create a match between (x)-[:memberof]->(group)
+#And create a relation between (group)-[:member]->(group,computer,person)
 session = driver.session()
 tx = session.begin_transaction()
-tx.run("""MATCH (x) WHERE EXISTS(x.memberOf) 
-            WITH x, x.memberOf AS memof UNWIND memof AS memofx 
-            MATCH (g:group) WHERE g.distinguishedName = memofx 
-            MERGE (x)-[:memberof]->(g);""")
+tx.run("""MATCH (g:group) WHERE EXISTS(g.member) 
+            WITH g, g.member AS mem UNWIND mem AS memfx 
+            MATCH (x) WHERE x.distinguishedName = memfx 
+            AND (x:person OR x:group OR x:computer) 
+            MERGE (g)-[:member]->(x);""")
 tx.commit()
 print("Group/Person/Computer relation with group is made.")
 #close the Connection with Neo4j
