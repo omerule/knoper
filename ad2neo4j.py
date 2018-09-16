@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
-
 ########################################
 #                                      #
 # (ActiveDirectory)-[:Python]->(Neo4j) #
 #                                      #
-# Version: "First Make it work 2.1     #
+# Version: "First Make it work 2.2     #
 #                                      #
 ########################################
-
-#The Idea is to read almost all objects from a ActiveDirectory
 #And put the objects in Neo4j as "nodes" and make a relations with AD groups and there members
-#The flow of the program is get all group, computer, ou and person objects from Active Directory 
+#The flow of the program is get all group, computer, and person objects from Active Directory 
 #and make groupnodes in Neo4j.
-#Then get merge all memberOf and primaryGroupID with Neo4j
-#(object)-[:memberOf]->(group) and (user/computer)-[:memberOf{based on primaryGroupID]->(groep)
-#You need python-ldap3 and Neo4j https://neo4j.com/docs/operations-manual/3.1/installation/
-
-#This one is needed for some issue with Neo4j and Python and "datetime" values.
+#Then get merge all member and primaryGroupID with Neo4j
+#(object)-[:member]->(group) and (user/computer)-[:member{based on primaryGroupID]->(groep)
+#You need Active Directory, Python with python-ldap3 
+#and Neo4j https://neo4j.com/docs/operations-manual/3.1/installation/
 import datetime
 #You can install ldap3 with $pip install ldap3
 from ldap3 import Server, Connection, ALL, NTLM, SUBTREE 
@@ -95,15 +91,6 @@ group_attributes = [
 ,"managedBy"
 ,"groupType"
 ]
-
-#ou_attributes = [
-#"objectGUID"
-#,"objectSid"
-#,"whenCreated"
-#,"whenChanged"
-#,"canonicalName"
-#]
-
 #################################################################
 #                         End User Space                        # 
 #################################################################
@@ -118,13 +105,11 @@ neo4j_pass = getpass.getpass("password Neo4j user: ") #neo4j password
 mandatory_person_attr = ["primaryGroupID","distinguishedName","objectCategory","name"]
 mandatory_computer_attr = ["primaryGroupID","distinguishedName","objectCategory","name"]
 mandatory_group_attr = ["primaryGroupToken","distinguishedName","member","objectCategory","name"]
-#mandatory_ou_attr = ["distinguishedName","objectCategory","name"]
 
 #And Merge the Attributes from "user space"  with the above Mandatory Attributes
 person_attributes = list(set(person_attributes + mandatory_person_attr))
 computer_attributes = list(set(computer_attributes + mandatory_computer_attr))
 group_attributes = list(set(group_attributes + mandatory_group_attr))
-#ou_attributes = list(set(ou_attributes + mandatory_ou_attr))
 
 #Make a connection with Active Directory
 server = Server(domain_ip, get_info=ALL) 
@@ -140,7 +125,6 @@ session.run("MATCH (x) WHERE EXISTS(x.extra_info) DETACH DELETE x;")
 session.run("CREATE CONSTRAINT ON (p:person) ASSERT p.distinguishedName IS UNIQUE;")
 session.run("CREATE CONSTRAINT ON (c:computer) ASSERT c.distinguishedName IS UNIQUE;")
 session.run("CREATE CONSTRAINT ON (g:group) ASSERT g.distinguishedName IS UNIQUE;")
-#session.run("CREATE CONSTRAINT ON (o:ou) ASSERT o.distinguishedName IS UNIQUE;")
 session.run("CREATE INDEX ON :group(primaryGroupToken);")
 session.run("CREATE INDEX ON :computer(primaryGroupID);")
 session.run("CREATE INDEX ON :person(primaryGroupID);")
@@ -179,7 +163,6 @@ def ad2neo4j(adfilter, adattr, adobject):
     session = driver.session()
     tx = session.begin_transaction()
 
-
     #Make the Nodes in Neo4j
     for x in conn.entries:          
         #Create a dict with the AD attributes as "keys" and there value extracted from AD.
@@ -203,7 +186,6 @@ def ad2neo4j(adfilter, adattr, adobject):
 ad2neo4j('(&(objectCategory=person)(objectClass=user))', person_attributes, 'person')
 ad2neo4j('(objectCategory=computer)', computer_attributes, 'computer')
 ad2neo4j('(objectCategory=group)', group_attributes, 'group')
-#ad2neo4j('(|(objectCategory=container)(objectCategory=builtinDomain)(objectCategory=domain)(objectCategory=organizationalUnit))', ou_attributes, 'ou')
 
 #Next make relation between Persons/Computers/Groups and Groups
 #And PrimaryGroupID for Persons and Computers 
