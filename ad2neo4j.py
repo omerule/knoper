@@ -215,11 +215,26 @@ session = driver.session()
 tx = session.begin_transaction()
 tx.run("""MATCH (g:group) WHERE EXISTS(g.member) 
             WITH g, g.member AS mem UNWIND mem AS memfx 
-            MATCH (x) WHERE x.distinguishedName = memfx 
-            AND (x:person OR x:group OR x:computer) 
-            MERGE (g)-[:member]->(x);""")
+            MATCH (p:person) WHERE p.distinguishedName = memfx 
+            MERGE (g)-[:member]->(p);""")
 tx.commit()
-print("Group/Person/Computer relation with group is made.")
+print("Person relation with Group is made.")
+session = driver.session()
+tx = session.begin_transaction()
+tx.run("""MATCH (g:group) WHERE EXISTS(g.member) 
+            WITH g, g.member AS mem UNWIND mem AS memfx 
+            MATCH (c:computer) WHERE c.distinguishedName = memfx 
+            MERGE (g)-[:member]->(c);""")
+tx.commit()
+print("Computer relation with Group is made.")
+session = driver.session()
+tx = session.begin_transaction()
+tx.run("""MATCH (g:group) WHERE EXISTS(g.member) 
+            WITH g, g.member AS mem UNWIND mem AS memfx 
+            MATCH (gg:group) WHERE gg.distinguishedName = memfx 
+            MERGE (g)-[:member]->(gg);""")
+tx.commit()
+print("Group relation with Group is made.")
 #close the Connection with Neo4j
 print(session.close())
 #Close the Connection with ActiveDirectory
