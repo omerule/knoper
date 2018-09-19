@@ -3,7 +3,7 @@
 #                                      #
 # (ActiveDirectory)-[:Python]->(Neo4j) #
 #                                      #
-# Version: "First Make it work 2.2     #
+# Version: "First Make it work 2.3     #
 #                                      #
 ########################################
 #The flow of the program is: 
@@ -196,10 +196,7 @@ ad2neo4j('(objectCategory=group)', group_attributes, 'group')
 #And PrimaryGroupID for Persons and Computers 
 #The idea is to have all indexes be ready before using them.
 #Not sure if this will work:
-session = driver.session()
-tx = session.begin_transaction()
-tx.run("CALL db.awaitIndexes(600);")
-tx.commit()
+session.run("CALL db.awaitIndexes(600);")
 #Now make the relations with members of group
 #First the "special" relation with persons and computers and there primaryGroupID
 session = driver.session()
