@@ -134,7 +134,7 @@ session.run("CREATE INDEX ON :group(primaryGroupToken);")
 session.run("CREATE INDEX ON :computer(primaryGroupID);")
 session.run("CREATE INDEX ON :person(primaryGroupID);")
 
-class uac(IntfLAG)
+class uac(IntFlag):
     ACCOUNT_DISABLE = 2
     HOMEDIR_REQUIRED = 8
     LOCKOUT = 16
@@ -204,9 +204,9 @@ def ad2neo4j(adfilter, adattr, adobject, adscope):
             else:
                 neo_advalues_dict[y] = x[y].value
         
-        #enumaration of userAccountControl
-        if y == "userAccountControl":
-            neo_advalues_dict["uac"] = uac(x[y].value) 
+            #enumaration of userAccountControl
+            if y == "userAccountControl" and adobject == "person":
+                neo_advalues_dict["uac"] = str(uac(x[y].value))
 
         #This label should be better
         neo_advalues_dict["extra_info"] = "hello world!"
