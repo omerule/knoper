@@ -3,7 +3,7 @@
 #                                      #
 # (ActiveDirectory)-[:Python]->(Neo4j) #
 #                                      #
-# Version: "First Make it work 2.3     #
+# Version: "First Make it work 2.4     #
 #                                      #
 ########################################
 #The flow of the program is: 
@@ -13,7 +13,8 @@
 #Then you can explore these relationships with Neo4j.
 #You need Active Directory, Python with python-ldap3 and Neo4j
 import datetime
-#You can install ldap3 with $pip install ldap3
+from enum import IntFlag
+#You can install ldap3 with $pip3 install ldap3
 from ldap3 import Server, Connection, ALL, NTLM, SUBTREE 
 #You can install neo4j.driver with $pip3 install neo4j-driver
 from neo4j.v1 import GraphDatabase, basic_auth
@@ -36,7 +37,6 @@ domain_name = "contoso.com" #example domain.local
 ldap_pers_scope = "DC=contoso,DC=com" #example OU=Users,DC=domain,DC=local
 ldap_comp_scope = "DC=contoso,DC=com" #example OU=Computers,DC=domain,DC=local
 ldap_group_scope = "DC=contoso,DC=com" #example DC=domain,DC=local
-ldap_ou_scope = "DC=contoso,DC=com" #example DC=domain,DC=local
 
 #You can add extra Active Directory Attributes of you need more.
 #Some notes:
@@ -134,6 +134,29 @@ session.run("CREATE INDEX ON :group(primaryGroupToken);")
 session.run("CREATE INDEX ON :computer(primaryGroupID);")
 session.run("CREATE INDEX ON :person(primaryGroupID);")
 
+class uac(IntfLAG)
+    ACCOUNT_DISABLE = 2
+    HOMEDIR_REQUIRED = 8
+    LOCKOUT = 16
+    PASSWD_NOTREQD = 32
+    PASSWD_CANT_CHANGE = 64
+    ENCRYPTED_TEXT_PASSWORD_ALLOWED = 128
+    NORMAL_ACCOUNT = 512
+    INTERDOMAIN_TRUST_ACCOUNT = 2048
+    WORKSTATION_TRUST_ACCOUNT = 4096
+    SERVER_TRUST_ACCOUNT = 8192
+    DONT_EXPIRE_PASSWD = 65536
+    MNS_LOGON_ACCOUNT = 131072 
+    SMARTCARD_REQUIRED = 262144 
+    TRUSTED_FOR_DELEGATION = 524288 
+    NOT_DELEGATED = 1048576
+    USE_DES_KEY_ONLY = 2097152
+    DONT_REQUIRE_PREAUTH = 4194304
+    PASSWORD_EXPIRED = 8388608
+    TRUSTED_TO_AUTHENTICATE_FOR_DELEGATION = 16777216 
+    NO_AUTH_DATA_REQUIRED = 33554432 
+    PARTIAL_SECRETS_ACCOUNT = 67108864 
+
 def welder(ad_attr,node_label):
     """
     I try to make a welder for AD attributes for Neo4j attributes as 
@@ -151,12 +174,12 @@ def welder(ad_attr,node_label):
             cypher = cypher + ", a.{} = ${} \n".format(x,x)        
     return cypher 
 
-def ad2neo4j(adfilter, adattr, adobject):
+def ad2neo4j(adfilter, adattr, adobject, adscope):
     """
     This function will read the Objects from Active Directory and put them in de Neo4j GraphDB. 
     """
     #Get the objects form Active Directory
-    conn.extend.standard.paged_search(search_base = ldap_pers_scope,
+    conn.extend.standard.paged_search(search_base = adscope,
                             search_filter = adfilter,
                             search_scope = SUBTREE,
                             attributes = adattr,
@@ -180,6 +203,11 @@ def ad2neo4j(adfilter, adattr, adobject):
                 neo_advalues_dict[y] = str(x[y].value)
             else:
                 neo_advalues_dict[y] = x[y].value
+        
+        #enumaration of userAccountControl
+        if y == "userAccountControl":
+            neo_advalues_dict["uac"] = uac(x[y].value) 
+
         #This label should be better
         neo_advalues_dict["extra_info"] = "hello world!"
 
@@ -188,9 +216,9 @@ def ad2neo4j(adfilter, adattr, adobject):
     tx.commit()
     print(adobject + "s are made...")
 
-ad2neo4j('(&(objectCategory=person)(objectClass=user))', person_attributes, 'person')
-ad2neo4j('(objectCategory=computer)', computer_attributes, 'computer')
-ad2neo4j('(objectCategory=group)', group_attributes, 'group')
+ad2neo4j('(&(objectCategory=person)(objectClass=user))', person_attributes, 'person', ldap_pers_scope)
+ad2neo4j('(objectCategory=computer)', computer_attributes, 'computer', ldap_comp_scope)
+ad2neo4j('(objectCategory=group)', group_attributes, 'group', ldap_group_scope)
 
 #Next make relation between Persons/Computers/Groups and Groups
 #And PrimaryGroupID for Persons and Computers 
