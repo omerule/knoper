@@ -206,7 +206,11 @@ def ad2neo4j(adfilter, adattr, adobject, adscope):
         
             #enumaration of userAccountControl
             if y == "userAccountControl" and adobject == "person":
-                neo_advalues_dict["uac"] = str(uac(x[y].value))
+                #Not sure howto check for "null" values within Python
+                try:
+                    neo_advalues_dict["uac"] = str(uac(x[y].value))
+                except:
+                    pass
 
         #This label should be better
         neo_advalues_dict["extra_info"] = "hello world!"
