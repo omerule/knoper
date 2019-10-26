@@ -8,7 +8,7 @@ For this script I used Fedora >= 27, ActiveDirectory, a Domain account, Neo4j, P
 This is the first version tested on a small ActiveDirectory.
 
 To run the script on Linux you need to make it executable first with chmod +x {scriptname}.
-Then and open the script with a texteditor and adjust the values of the fields with {} and save the file. You can run it with ./{scriptname} if there are no errors, the Neo4j GraphDB is filled. Now you can go to the graph database with http://localhost:7474. And query MATCH x=()-[:memberof]->() RETURN x LIMIT 30;.
+Then and open the script with a texteditor and adjust the values of the fields with {} and save the file. You can run it with ./{scriptname} if there are no errors, the Neo4j GraphDB is filled. Now you can go to the graph database with http://localhost:7474. And query MATCH x=()-[:member]->() RETURN x LIMIT 30;.
 
 
 
