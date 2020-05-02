@@ -3,7 +3,7 @@
 #                                      #
 # (ActiveDirectory)-[:Python]->(Neo4j) #
 #                                      #
-# Version: "First Make it work 2.4     #
+# Version: "First Make it work 2.5     #
 #                                      #
 ########################################
 #The flow of the program is: 
@@ -17,8 +17,7 @@ from enum import IntFlag
 #You can install ldap3 with $pip3 install ldap3
 from ldap3 import Server, Connection, ALL, NTLM, SUBTREE 
 #You can install neo4j.driver with $pip3 install neo4j-driver
-from neo4j.v1 import GraphDatabase, basic_auth
-from neo4j.util import watch
+from neo4j import GraphDatabase
 import logging
 from sys import stdout
 import getpass
@@ -28,9 +27,6 @@ import cmd
 #                   Begin User Space                            #
 #     Adjust these variable for your own environment            #
 #################################################################
-
-#Debug on/off
-#watch("neo4j.bolt", logging.DEBUG, stdout)
 
 domain_ip = "domaincontroller ipaddress" #The IPv4 address of the DomainController
 domain_name = "contoso.com" #example domain.local
@@ -122,7 +118,7 @@ conn = Connection(server, user="{}\\{}".format(domain_name,domain_user), passwor
 conn.bind()
 
 #Make a connection with the Neo4j database
-driver = GraphDatabase.driver("bolt://localhost:7687", auth=basic_auth(neo4j_user, neo4j_pass))
+driver = GraphDatabase.driver("bolt://localhost:7687", auth=basic_auth(neo4j_user, neo4j_pass), encrypted=False)
 
 #First some cleanup and Preparation of the Neo4j GraphDB
 session = driver.session()
