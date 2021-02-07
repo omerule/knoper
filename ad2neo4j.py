@@ -3,7 +3,7 @@
 #                                      #
 # (ActiveDirectory)-[:Python]->(Neo4j) #
 #                                      #
-# Version: "First Make it work 2.5     #
+# Version: "First Make it work 2.6     #
 #                                      #
 ########################################
 #The flow of the program is: 
@@ -118,7 +118,7 @@ conn = Connection(server, user="{}\\{}".format(domain_name,domain_user), passwor
 conn.bind()
 
 #Make a connection with the Neo4j database
-driver = GraphDatabase.driver("bolt://localhost:7687", auth=basic_auth(neo4j_user, neo4j_pass), encrypted=False)
+driver = GraphDatabase.driver("bolt://localhost:7687", auth=(neo4j_user, neo4j_pass), encrypted=False)
 
 #First some cleanup and Preparation of the Neo4j GraphDB
 session = driver.session()
